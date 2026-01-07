@@ -1,6 +1,6 @@
 # RiboNN: A deep learning model to predict translation efficiency from mRNA sequence
 
-For more information, please see our [RiboNN paper](https://www.biorxiv.org/content/10.1101/2024.08.11.607362v2).
+For more information, please see our [RiboNN paper](https://www.nature.com/articles/s41587-025-02712-x).
 
 - System requirements:
 
