@@ -30,7 +30,7 @@ For more information, please see our [RiboNN paper](https://www.nature.com/artic
 
 
 - To train the RiboNN model from scratch:
-   1. Put the training data in a tab-separated text file in the "data" folder, which already contain an example training data file. The tab-separated text file should have columns named "tx_id" (unique transcript IDs), "utr5_sequence", "cds_sequence" (including start and stop codons), and "utr3_sequence". Alternatively, the file may have columns named "tx_id", "tx_sequence" (full transcript seuquences containing 5'UTR, CDS, and 3'UTR), "utr5_size" (lengths of the 5'UTRs), and "cds_size" (lengths of the CDSs). 
+   1. Put the training data in a tab-separated text file in the "data" folder, which already contain an example training data file with **fake** TEs. The tab-separated text file should have columns named "tx_id" (unique transcript IDs), "utr5_sequence", "cds_sequence" (including start and stop codons), and "utr3_sequence". Alternatively, the file may have columns named "tx_id", "tx_sequence" (full transcript seuquences containing 5'UTR, CDS, and 3'UTR), "utr5_size" (lengths of the 5'UTRs), and "cds_size" (lengths of the CDSs). The published human and mouse models were trained on data in the Supplementary Tables published in the RiboNN paper.
    2. Edit the path to the training data ("tx_info_path") and other hyperparameters defined in the config/conf.yml file. 
    3. Edit the code below line 18 of src/main.py to control how the model will be trained.
    4. Run `make train` at the terminal to start the training process.
