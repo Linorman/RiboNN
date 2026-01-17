@@ -174,6 +174,8 @@ def transfer_learning(
                     
                     # Train the head
                     trainer = pl.Trainer(
+                        accelerator="auto",
+                        devices=1,
                         max_epochs=phase_1_epochs,
                         gradient_clip_val=0.5,
                         callbacks=[
@@ -195,6 +197,8 @@ def transfer_learning(
                         model.lr_schedulers,
                     ) = model.configure_optimizers()
                     trainer = pl.Trainer(
+                        accelerator="auto",
+                        devices=1,
                         max_epochs=max_epochs - phase_1_epochs,
                         gradient_clip_val=0.5,
                         callbacks=[
@@ -220,6 +224,7 @@ def transfer_learning(
 
                     # Test
                     trainer = pl.Trainer(
+                        accelerator="auto",
                         devices=1,
                         num_nodes=1,
                         logger=mlf_logger,  # important

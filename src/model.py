@@ -372,7 +372,7 @@ class Saluki(pl.LightningModule):
         if shift == 0:
             return x
 
-        padding = torch.zeros((x.shape[0], x.shape[1], abs(shift))).to(self.device)
+        padding = torch.zeros((x.shape[0], x.shape[1], abs(shift)), device=x.device, dtype=x.dtype)
         if shift < 0:
             # shift to the left
             x = torch.concat([x[:, :, -shift:], padding], axis=2)
@@ -644,7 +644,7 @@ class RiboNN(pl.LightningModule):
         if shift == 0:
             return x
 
-        padding = torch.zeros((x.shape[0], x.shape[1], abs(shift))).to(self.device)
+        padding = torch.zeros((x.shape[0], x.shape[1], abs(shift)), device=x.device, dtype=x.dtype)
         if shift < 0:
             # shift to the left
             x = torch.concat([x[:, :, -shift:], padding], axis=2)

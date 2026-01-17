@@ -127,7 +127,7 @@ def train_model_nested_cv(
 
                     # Create the trainer
                     trainer = pl.Trainer(
-                        accelerator='gpu', 
+                        accelerator="auto",
                         devices=1,
                         max_epochs=max_epochs,
                         # fast_dev_run=True,
@@ -191,7 +191,7 @@ def train_model_nested_cv(
 
                     # Test
                     trainer = pl.Trainer(
-                        accelerator='gpu', 
+                        accelerator="auto",
                         devices=1,
                         num_nodes=1,
                         logger=mlf_logger,  # important

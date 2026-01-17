@@ -76,6 +76,12 @@ class DataFrameDataset(Dataset):
             "G": 3,
         }
 
+        self._base_lut = np.full(256, -1, dtype=np.int64)
+        self._base_lut[ord("A")] = 0
+        self._base_lut[ord("T")] = 1
+        self._base_lut[ord("C")] = 2
+        self._base_lut[ord("G")] = 3
+
     def __len__(self):
         return self.df.shape[0]
 
@@ -101,35 +107,34 @@ class DataFrameDataset(Dataset):
         ):  # Padding the 5' end and align sequences at the start codon.
             if self.split_utr5_cds_utr3_channels:
                 # Encode 5'UTR
-                for idx, nt in enumerate(original_tx_seq[:original_utr5_len]):
-                    x[
-                        self.base_index[nt],
-                        self.padded_utr5_len - original_utr5_len + idx,
-                    ] = 1
+                utr5_seq = original_tx_seq[:original_utr5_len]
+                if utr5_seq:
+                    base_idx = self._base_lut[np.frombuffer(utr5_seq.encode("ascii"), dtype=np.uint8)]
+                    positions = torch.arange(original_utr5_len, dtype=torch.int64) + (self.padded_utr5_len - original_utr5_len)
+                    channels = torch.from_numpy(base_idx)  # int64
+                    x[channels, positions] = 1
                 # Encode CDS
-                for idx, nt in enumerate(
-                    original_tx_seq[
-                        original_utr5_len : original_utr5_len + original_cds_len
-                    ]
-                ):
-                    x[self.base_index[nt] + 4, self.padded_utr5_len + idx] = 1
+                cds_seq = original_tx_seq[original_utr5_len : original_utr5_len + original_cds_len]
+                if cds_seq:
+                    base_idx = self._base_lut[np.frombuffer(cds_seq.encode("ascii"), dtype=np.uint8)]
+                    positions = torch.arange(original_cds_len, dtype=torch.int64) + self.padded_utr5_len
+                    channels = torch.from_numpy(base_idx) + 4
+                    x[channels, positions] = 1
                 # Encode 3'UTR
-                for idx, nt in enumerate(
-                    original_tx_seq[
-                        original_utr5_len + original_cds_len : original_tx_len
-                    ]
-                ):
-                    x[
-                        self.base_index[nt] + 8,
-                        self.padded_utr5_len + original_cds_len + idx,
-                    ] = 1
+                utr3_seq = original_tx_seq[original_utr5_len + original_cds_len : original_tx_len]
+                utr3_len = original_tx_len - original_utr5_len - original_cds_len
+                if utr3_seq:
+                    base_idx = self._base_lut[np.frombuffer(utr3_seq.encode("ascii"), dtype=np.uint8)]
+                    positions = torch.arange(utr3_len, dtype=torch.int64) + (self.padded_utr5_len + original_cds_len)
+                    channels = torch.from_numpy(base_idx) + 8
+                    x[channels, positions] = 1
             else:
                 # Encode the entire transcript in 4 channels
-                for idx, nt in enumerate(original_tx_seq):
-                    x[
-                        self.base_index[nt],
-                        self.padded_utr5_len - original_utr5_len + idx,
-                    ] = 1
+                if original_tx_seq:
+                    base_idx = self._base_lut[np.frombuffer(original_tx_seq.encode("ascii"), dtype=np.uint8)]
+                    positions = torch.arange(original_tx_len, dtype=torch.int64) + (self.padded_utr5_len - original_utr5_len)
+                    channels = torch.from_numpy(base_idx)
+                    x[channels, positions] = 1
 
             # Encode labels
             row_index = self.seq_channels
@@ -143,8 +148,9 @@ class DataFrameDataset(Dataset):
             if self.label_codons:
                 start = self.padded_utr5_len
                 stop = start + original_cds_len - 3
-                for idx in range(start, stop + 1, 3):
-                    x[row_index, idx] = 1
+                if stop >= start:
+                    indices = torch.arange(start, stop + 1, 3, dtype=torch.int64)
+                    x[row_index, indices] = 1
                 row_index += 1
 
             if self.label_utr3:
@@ -160,47 +166,51 @@ class DataFrameDataset(Dataset):
                 if isinstance(
                     ss, str
                 ):  # Empty strings are turned into np.nan, which is a float
-                    ss = ss.split(";")
-                    for idx in ss:
-                        x[
-                            row_index,
-                            self.padded_utr5_len - original_utr5_len + int(idx) - 1,
-                        ] = 1
+                    ss_idx = np.fromstring(ss, sep=";")
+                    if ss_idx.size:
+                        indices = torch.from_numpy(ss_idx.astype(np.int64))
+                        indices = indices + (self.padded_utr5_len - original_utr5_len) - 1
+                        x[row_index, indices] = 1
                 row_index += 1
 
             # Encode structure
             if self.label_up_probs:
-                for idx, prob in enumerate(probs):
-                    x[row_index, self.padded_utr5_len - original_utr5_len + idx - 1] = (
-                        float(prob)
-                    )
+                prob_arr = np.fromstring(self.df.up_prob.values[i], sep=";")[:original_tx_len]
+                if prob_arr.size:
+                    indices = torch.arange(prob_arr.size, dtype=torch.int64) + (self.padded_utr5_len - original_utr5_len) - 1
+                    x[row_index, indices] = torch.from_numpy(prob_arr.astype(np.float32))
 
         else:  # Not padding the 5' end. Simply align sequences at the 5' end.
             if self.split_utr5_cds_utr3_channels:
                 # Encode 5'UTR
-                for idx, nt in enumerate(original_tx_seq[:original_utr5_len]):
-                    x[self.base_index[nt], idx] = 1
+                utr5_seq = original_tx_seq[:original_utr5_len]
+                if utr5_seq:
+                    base_idx = self._base_lut[np.frombuffer(utr5_seq.encode("ascii"), dtype=np.uint8)]
+                    positions = torch.arange(original_utr5_len, dtype=torch.int64)
+                    channels = torch.from_numpy(base_idx)
+                    x[channels, positions] = 1
                 # Encode CDS
-                for idx, nt in enumerate(
-                    original_tx_seq[
-                        original_utr5_len : original_utr5_len + original_cds_len
-                    ]
-                ):
-                    x[self.base_index[nt] + 4, original_utr5_len + idx] = 1
+                cds_seq = original_tx_seq[original_utr5_len : original_utr5_len + original_cds_len]
+                if cds_seq:
+                    base_idx = self._base_lut[np.frombuffer(cds_seq.encode("ascii"), dtype=np.uint8)]
+                    positions = torch.arange(original_cds_len, dtype=torch.int64) + original_utr5_len
+                    channels = torch.from_numpy(base_idx) + 4
+                    x[channels, positions] = 1
                 # Encode 3'UTR
-                for idx, nt in enumerate(
-                    original_tx_seq[
-                        original_utr5_len + original_cds_len : original_tx_len
-                    ]
-                ):
-                    x[
-                        self.base_index[nt] + 8,
-                        original_utr5_len + original_cds_len + idx,
-                    ] = 1
+                utr3_seq = original_tx_seq[original_utr5_len + original_cds_len : original_tx_len]
+                utr3_len = original_tx_len - original_utr5_len - original_cds_len
+                if utr3_seq:
+                    base_idx = self._base_lut[np.frombuffer(utr3_seq.encode("ascii"), dtype=np.uint8)]
+                    positions = torch.arange(utr3_len, dtype=torch.int64) + (original_utr5_len + original_cds_len)
+                    channels = torch.from_numpy(base_idx) + 8
+                    x[channels, positions] = 1
             else:
                 # Encode the entire transcript in 4 channels
-                for idx, nt in enumerate(original_tx_seq):
-                    x[self.base_index[nt], idx] = 1
+                if original_tx_seq:
+                    base_idx = self._base_lut[np.frombuffer(original_tx_seq.encode("ascii"), dtype=np.uint8)]
+                    positions = torch.arange(original_tx_len, dtype=torch.int64)
+                    channels = torch.from_numpy(base_idx)
+                    x[channels, positions] = 1
 
             # Encode labels
             row_index = self.seq_channels
@@ -212,11 +222,13 @@ class DataFrameDataset(Dataset):
                 start = original_utr5_len
                 stop = start + original_cds_len - 3
                 if self.label_3rd_nt_of_codons:
-                    for idx in range(start + 2, stop + 3, 3):
-                        x[row_index, idx] = 1
+                    if stop + 2 >= start + 2:
+                        indices = torch.arange(start + 2, stop + 3, 3, dtype=torch.int64)
+                        x[row_index, indices] = 1
                 else:
-                    for idx in range(start, stop + 1, 3):
-                        x[row_index, idx] = 1
+                    if stop >= start:
+                        indices = torch.arange(start, stop + 1, 3, dtype=torch.int64)
+                        x[row_index, indices] = 1
                 row_index += 1
 
             if self.label_utr3:
@@ -230,15 +242,18 @@ class DataFrameDataset(Dataset):
                 if isinstance(
                     ss, str
                 ):  # Empty strings are turned into np.nan, which is a float
-                    ss = ss.split(";")
-                    for idx in ss:
-                        x[row_index, int(idx) - 1] = 1
+                    ss_idx = np.fromstring(ss, sep=";")
+                    if ss_idx.size:
+                        indices = torch.from_numpy(ss_idx.astype(np.int64)) - 1
+                        x[row_index, indices] = 1
                 row_index += 1
 
             # Encode structure
             if self.label_up_probs:
-                for idx, prob in enumerate(probs):
-                    x[row_index, idx - 1] = float(prob)
+                prob_arr = np.fromstring(self.df.up_prob.values[i], sep=";")[:original_tx_len]
+                if prob_arr.size:
+                    indices = torch.arange(prob_arr.size, dtype=torch.int64) - 1
+                    x[row_index, indices] = torch.from_numpy(prob_arr.astype(np.float32))
 
         if self.targets is None:
             return x
@@ -407,13 +422,21 @@ class RiboNNDataModule(pl.LightningDataModule):
 
         reorder = stage == "train"
 
-        return DataLoader(
-            dataset,
-            batch_size,
+        dl_kwargs = dict(
+            batch_size=batch_size,
             shuffle=reorder,
             num_workers=self.num_workers,
             drop_last=drop_last,
-            pin_memory=True,
+            pin_memory=torch.cuda.is_available(),
+        )
+
+        if self.num_workers and self.num_workers > 0:
+            dl_kwargs["persistent_workers"] = True
+            dl_kwargs["prefetch_factor"] = 2
+
+        return DataLoader(
+            dataset,
+            **dl_kwargs,
         )
 
     def train_dataloader(self) -> DataLoader:

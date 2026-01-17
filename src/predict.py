@@ -34,19 +34,31 @@ def predict_using_models_trained_in_one_fold(
 
     # Iterate over the models to make predictions
     predictions = []
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda:0")
+    else:
+        device = torch.device("cpu")
+
+    predict_loader = dm.predict_dataloader()
+
     for run_id in run_df.run_id:
         # Create a new model
         model = RiboNN(**config)
 
         # Load the state dict
         local_state_dict_path = f"models/{config['species']}/{run_id}/state_dict.pth"
-        model.load_state_dict(torch.load(local_state_dict_path))
+        model.load_state_dict(torch.load(local_state_dict_path, map_location="cpu"))
         model.to(device)
         model.eval()
 
-        with torch.no_grad():
-            batched_predictions = [model(batch.to(device)) for batch in dm.predict_dataloader()]
+        with torch.inference_mode():
+            batched_predictions = []
+            for batch in predict_loader:
+                batch = batch.to(device, non_blocking=torch.cuda.is_available())
+                batched_predictions.append(model(batch))
 
         if isinstance(batched_predictions, list):
             batched_predictions = torch.cat(batched_predictions, dim=0)
